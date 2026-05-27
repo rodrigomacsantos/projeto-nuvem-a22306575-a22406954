@@ -1,0 +1,33 @@
+- name: Deploy Hello World Container
+  hosts: web
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Pull Docker image
+      docker_image:
+        name: a22306575/cloudms-hello:latest
+        source: pull
+
+    - name: Run Hello World container
+      docker_container:
+        name: cloudms-hello
+        image: a22306575/cloudms-hello:latest
+        state: started
+        restart_policy: always
+        ports:
+          - "80:80"
