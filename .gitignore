@@ -42,6 +42,8 @@ Thumbs.db
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+*.tfvars
+*.pem
 
 # Environment variables
 .env
