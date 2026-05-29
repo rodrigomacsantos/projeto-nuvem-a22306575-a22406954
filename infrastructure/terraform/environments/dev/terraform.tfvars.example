@@ -1,0 +1,3 @@
+ami_id      = "ami-xxxxxxx"
+key_name    = "cloudms-key"
+db_password = "password123"
