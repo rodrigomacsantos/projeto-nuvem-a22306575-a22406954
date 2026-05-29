@@ -67,11 +67,13 @@ jobs:
         working-directory: infrastructure/terraform/environments/dev
         run: terraform apply -auto-approve
 
-      - name: Get EC2 public IP
+      - name: Get Terraform outputs
         id: tf-output
         working-directory: infrastructure/terraform/environments/dev
         run: |
           echo "EC2_PUBLIC_IP=$(terraform output -raw instance_public_ip)" >> $GITHUB_OUTPUT
+          echo "DB_ENDPOINT=$(terraform output -raw db_endpoint)" >> $GITHUB_OUTPUT
+          echo "SQS_QUEUE_URL=$(terraform output -raw order_created_queue_url)" >> $GITHUB_OUTPUT
 
       - name: Install Ansible
         run: |
@@ -93,4 +95,9 @@ jobs:
 
       - name: Run Ansible deploy
         run: |
-          ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/deploy-hello.yml
+          ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/deploy-services.yml \
+            --extra-vars "dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }}" \
+            --extra-vars "db_endpoint=${{ steps.tf-output.outputs.DB_ENDPOINT }}" \
+            --extra-vars "db_password=${{ secrets.TF_VAR_DB_PASSWORD }}" \
+            --extra-vars "sqs_queue_url=${{ steps.tf-output.outputs.SQS_QUEUE_URL }}" \
+            --extra-vars "aws_region=us-east-1"

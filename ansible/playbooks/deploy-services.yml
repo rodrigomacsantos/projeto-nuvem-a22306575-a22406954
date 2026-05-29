@@ -1,0 +1,76 @@
+- name: Deploy CloudMS real services
+  hosts: web
+  become: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Create application network
+      command: docker network create cloudms-network
+      ignore_errors: yes
+
+    - name: Remove old product-service container
+      command: docker rm -f cloudms-product-service
+      ignore_errors: yes
+
+    - name: Remove old order-service container
+      command: docker rm -f cloudms-order-service
+      ignore_errors: yes
+
+    - name: Pull product-service image
+      command: docker pull {{ dockerhub_username }}/cloudms-product-service:latest
+
+    - name: Pull order-service image
+      command: docker pull {{ dockerhub_username }}/cloudms-order-service:latest
+
+    - name: Run product-service container
+      command: >
+        docker run -d
+        --name cloudms-product-service
+        --restart always
+        --network cloudms-network
+        -p 8082:8082
+        -e SERVER_PORT=8082
+        -e SPRING_DATASOURCE_URL=jdbc:postgresql://{{ db_endpoint }}/cloudmsdb
+        -e SPRING_DATASOURCE_USERNAME=cloudmsuser
+        -e SPRING_DATASOURCE_PASSWORD={{ db_password }}
+        -e SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+        -e SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.PostgreSQLDialect
+        -e SPRING_JPA_HIBERNATE_DDL_AUTO=update
+        -e AWS_REGION={{ aws_region }}
+        -e AWS_SQS_ORDER_CREATED_QUEUE_URL={{ sqs_queue_url }}
+        {{ dockerhub_username }}/cloudms-product-service:latest
+
+    - name: Run order-service container
+      command: >
+        docker run -d
+        --name cloudms-order-service
+        --restart always
+        --network cloudms-network
+        -p 8083:8083
+        -e SERVER_PORT=8083
+        -e SPRING_DATASOURCE_URL=jdbc:postgresql://{{ db_endpoint }}/cloudmsdb
+        -e SPRING_DATASOURCE_USERNAME=cloudmsuser
+        -e SPRING_DATASOURCE_PASSWORD={{ db_password }}
+        -e SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+        -e SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.PostgreSQLDialect
+        -e SPRING_JPA_HIBERNATE_DDL_AUTO=update
+        -e AWS_REGION={{ aws_region }}
+        -e AWS_SQS_ORDER_CREATED_QUEUE_URL={{ sqs_queue_url }}
+        {{ dockerhub_username }}/cloudms-order-service:latest
+
+    - name: Show running containers
+      command: docker ps
