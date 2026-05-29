@@ -62,6 +62,10 @@ services:
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.PostgreSQLDialect
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SQS_ORDER_CREATED_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/582500932042/cloudms-dev-order-created-queue
     networks:
       - microservices-network
 
@@ -86,6 +90,10 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       SERVICES_PRODUCT_URL: http://product-service:8082
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_SQS_ORDER_CREATED_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/582500932042/cloudms-dev-order-created-queue
     networks:
       - microservices-network
 

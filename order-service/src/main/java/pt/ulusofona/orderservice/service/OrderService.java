@@ -20,15 +20,15 @@ import pt.ulusofona.orderservice.model.Order;
 import pt.ulusofona.orderservice.model.OrderItem;
 import pt.ulusofona.orderservice.model.OrderStatus;
 import pt.ulusofona.orderservice.repository.OrderRepository;
+import pt.ulusofona.orderservice.sqs.SqsOrderEventProducer;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
  * Service class containing business logic for Order operations.
- * 
+ *
  * <p>This service layer acts as an intermediary between the controller and repository
  * layers, implementing business logic and transaction management. It handles:
  * <ul>
@@ -36,26 +36,33 @@ import java.util.stream.Collectors;
  *   <li>Updating order status</li>
  *   <li>Retrieving orders</li>
  *   <li>Publishing Kafka events for order lifecycle</li>
+ *   <li>Publishing SQS events for AWS event-driven flow</li>
  * </ul>
- * 
+ *
  * <p>The service uses OpenFeign clients to communicate synchronously with:
  * <ul>
  *   <li>User Service - to validate user existence</li>
  *   <li>Product Service - to validate products and fetch product details</li>
  * </ul>
- * 
+ *
  * <p>The service publishes Kafka events for:
  * <ul>
  *   <li>Order creation - published to "order-created" topic</li>
  *   <li>Status changes - published to "order-status-changed" topic</li>
  * </ul>
- * 
+ *
+ * <p>The service also publishes SQS events for:
+ * <ul>
+ *   <li>Order creation - published to AWS SQS order-created queue</li>
+ * </ul>
+ *
  * @author Cloud Computing Course
  * @version 1.0.0
  * @since 1.0.0
  * @see OrderRepository
  * @see UserServiceClient
  * @see ProductServiceClient
+ * @see SqsOrderEventProducer
  */
 @Slf4j
 @Service
@@ -66,13 +73,14 @@ public class OrderService {
     private final UserServiceClient userServiceClient;
     private final ProductServiceClient productServiceClient;
     private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final SqsOrderEventProducer sqsOrderEventProducer;
 
     private static final String ORDER_CREATED_TOPIC = "order-created";
     private static final String ORDER_STATUS_CHANGED_TOPIC = "order-status-changed";
 
     /**
      * Creates a new order in the database.
-     * 
+     *
      * <p>This method:
      * <ol>
      *   <li>Validates user exists using UserServiceClient (OpenFeign)</li>
@@ -80,12 +88,13 @@ public class OrderService {
      *   <li>Creates order items with product snapshots</li>
      *   <li>Saves the order to the database</li>
      *   <li>Publishes OrderCreatedEvent to Kafka</li>
+     *   <li>Publishes OrderCreated event to AWS SQS</li>
      * </ol>
-     * 
+     *
      * @param request OrderRequest containing user ID and order items
      * @return OrderResponse representing the created order
      * @throws RuntimeException if user or product validation fails
-     * @apiNote This method uses a write transaction and publishes Kafka events
+     * @apiNote This method uses a write transaction and publishes asynchronous events
      */
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
@@ -120,8 +129,8 @@ public class OrderService {
             // Check stock availability
             if (product.getStockQuantity() < itemRequest.getQuantity()) {
                 throw new RuntimeException(
-                    String.format("Insufficient stock for product %s. Available: %d, Requested: %d",
-                        product.getName(), product.getStockQuantity(), itemRequest.getQuantity()));
+                        String.format("Insufficient stock for product %s. Available: %d, Requested: %d",
+                                product.getName(), product.getStockQuantity(), itemRequest.getQuantity()));
             }
 
             // Create order item with product snapshot
@@ -140,15 +149,18 @@ public class OrderService {
         Order savedOrder = orderRepository.save(order);
         log.info("Order created successfully with ID: {}", savedOrder.getId());
 
-        // Publish Kafka event (asynchronous)
+        // Publish Kafka event (legacy/asynchronous)
         publishOrderCreatedEvent(savedOrder);
+
+        // Publish SQS event for AWS event-driven flow
+        sqsOrderEventProducer.sendOrderCreatedEvent(savedOrder.getId());
 
         return mapToResponse(savedOrder);
     }
 
     /**
      * Retrieves all orders from the database.
-     * 
+     *
      * @return List of OrderResponse objects representing all orders
      * @apiNote This is a read-only transaction
      */
@@ -161,7 +173,7 @@ public class OrderService {
 
     /**
      * Retrieves an order by its unique identifier.
-     * 
+     *
      * @param id The unique identifier of the order to retrieve
      * @return OrderResponse object representing the order
      * @throws RuntimeException if order with the given ID is not found
@@ -176,7 +188,7 @@ public class OrderService {
 
     /**
      * Retrieves all orders for a specific user.
-     * 
+     *
      * @param userId The ID of the user
      * @return List of OrderResponse objects for the user
      * @apiNote This is a read-only transaction
@@ -190,7 +202,7 @@ public class OrderService {
 
     /**
      * Updates the status of an order.
-     * 
+     *
      * <p>This method:
      * <ol>
      *   <li>Retrieves the order by ID</li>
@@ -198,7 +210,7 @@ public class OrderService {
      *   <li>Saves the order</li>
      *   <li>Publishes OrderStatusChangedEvent to Kafka</li>
      * </ol>
-     * 
+     *
      * @param id The unique identifier of the order
      * @param newStatus The new status to set
      * @return OrderResponse object representing the updated order
@@ -226,11 +238,11 @@ public class OrderService {
 
     /**
      * Publishes an OrderCreatedEvent to Kafka.
-     * 
+     *
      * <p>This method creates an OrderCreatedEvent from the order entity and
      * publishes it to the "order-created" Kafka topic. Other services can
      * subscribe to this topic to react to order creation.
-     * 
+     *
      * @param order The order that was created
      */
     private void publishOrderCreatedEvent(Order order) {
@@ -259,11 +271,11 @@ public class OrderService {
 
     /**
      * Publishes an OrderStatusChangedEvent to Kafka.
-     * 
+     *
      * <p>This method creates an OrderStatusChangedEvent from the order entity and
      * publishes it to the "order-status-changed" Kafka topic. Other services can
      * subscribe to this topic to react to status changes.
-     * 
+     *
      * @param order The order whose status changed
      * @param previousStatus The previous status before the change
      */
@@ -288,12 +300,12 @@ public class OrderService {
 
     /**
      * Maps an Order entity to an OrderResponse DTO.
-     * 
+     *
      * @param order Order entity to convert
      * @return OrderResponse DTO representing the order
      */
     private OrderResponse mapToResponse(Order order) {
-        List<OrderItemResponse> items = order.getOrderItems() != null ? 
+        List<OrderItemResponse> items = order.getOrderItems() != null ?
                 order.getOrderItems().stream()
                         .map(item -> new OrderItemResponse(
                                 item.getId(),
@@ -315,4 +327,3 @@ public class OrderService {
         );
     }
 }
-

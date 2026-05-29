@@ -39,3 +39,9 @@ module "database" {
   db_instance_class    = "db.t3.micro"
   db_allocated_storage = 20
 }
+
+module "sqs" {
+  source = "../../modules/sqs"
+
+  name_prefix = "cloudms-dev"
+}
