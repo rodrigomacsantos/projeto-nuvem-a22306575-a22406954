@@ -3,14 +3,24 @@
   become: yes
 
   tasks:
+    - name: Wait for SSH connection
+      wait_for_connection:
+        timeout: 120
+
     - name: Update apt cache
       apt:
         update_cache: yes
+        lock_timeout: 120
 
     - name: Install Docker
       apt:
         name: docker.io
         state: present
+        lock_timeout: 120
+      register: docker_install_result
+      retries: 3
+      delay: 20
+      until: docker_install_result is succeeded
 
     - name: Start Docker service
       service:
@@ -26,6 +36,10 @@
       command: docker rm -f cloudms-hello
       ignore_errors: yes
 
+    - name: Remove old user-service container
+      command: docker rm -f cloudms-user-service
+      ignore_errors: yes
+
     - name: Remove old product-service container
       command: docker rm -f cloudms-product-service
       ignore_errors: yes
@@ -34,11 +48,30 @@
       command: docker rm -f cloudms-order-service
       ignore_errors: yes
 
+    - name: Pull user-service image
+      command: docker pull {{ dockerhub_username }}/cloudms-user-service:latest
+
     - name: Pull product-service image
       command: docker pull {{ dockerhub_username }}/cloudms-product-service:latest
 
     - name: Pull order-service image
       command: docker pull {{ dockerhub_username }}/cloudms-order-service:latest
+
+    - name: Run user-service container
+      command: >
+        docker run -d
+        --name cloudms-user-service
+        --restart always
+        --network cloudms-network
+        -p 8081:8081
+        -e SERVER_PORT=8081
+        -e SPRING_DATASOURCE_URL=jdbc:postgresql://{{ db_endpoint }}/cloudmsdb
+        -e SPRING_DATASOURCE_USERNAME=cloudmsuser
+        -e SPRING_DATASOURCE_PASSWORD={{ db_password }}
+        -e SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver
+        -e SPRING_JPA_DATABASE_PLATFORM=org.hibernate.dialect.PostgreSQLDialect
+        -e SPRING_JPA_HIBERNATE_DDL_AUTO=update
+        {{ dockerhub_username }}/cloudms-user-service:latest
 
     - name: Run product-service container
       command: >
@@ -74,6 +107,8 @@
         -e SPRING_JPA_HIBERNATE_DDL_AUTO=update
         -e AWS_REGION={{ aws_region }}
         -e AWS_SQS_ORDER_CREATED_QUEUE_URL={{ sqs_queue_url }}
+        -e SERVICES_USER_URL=http://cloudms-user-service:8081
+        -e SERVICES_PRODUCT_URL=http://cloudms-product-service:8082
         {{ dockerhub_username }}/cloudms-order-service:latest
 
     - name: Show all containers
@@ -83,3 +118,30 @@
     - name: Print all containers
       debug:
         var: docker_ps_output.stdout_lines
+
+    - name: Show user-service logs
+      command: docker logs cloudms-user-service --tail 80
+      register: user_logs
+      ignore_errors: yes
+
+    - name: Print user-service logs
+      debug:
+        var: user_logs.stdout_lines
+
+    - name: Show product-service logs
+      command: docker logs cloudms-product-service --tail 80
+      register: product_logs
+      ignore_errors: yes
+
+    - name: Print product-service logs
+      debug:
+        var: product_logs.stdout_lines
+
+    - name: Show order-service logs
+      command: docker logs cloudms-order-service --tail 80
+      register: order_logs
+      ignore_errors: yes
+
+    - name: Print order-service logs
+      debug:
+        var: order_logs.stdout_lines

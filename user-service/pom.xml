@@ -23,6 +23,7 @@
         <spring-cloud.version>2024.0.0</spring-cloud.version>
         <springdoc.version>2.6.0</springdoc.version>
         <mockito.version>5.14.2</mockito.version>
+        <jacoco.argLine></jacoco.argLine>
     </properties>
     
     <dependencies>
@@ -91,6 +92,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
     
