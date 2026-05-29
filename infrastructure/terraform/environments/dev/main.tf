@@ -21,7 +21,7 @@ module "compute" {
 
   name_prefix       = "cloudms-dev"
   ami_id            = var.ami_id
-  instance_type     = "t3.micro"
+  instance_type     = "t3.small"
   subnet_id         = module.network.public_subnet_ids[0]
   security_group_id = module.security_groups.web_security_group_id
   key_name          = var.key_name
