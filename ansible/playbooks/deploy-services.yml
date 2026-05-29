@@ -22,6 +22,10 @@
       command: docker network create cloudms-network
       ignore_errors: yes
 
+    - name: Remove old hello-world container
+      command: docker rm -f cloudms-hello
+      ignore_errors: yes
+
     - name: Remove old product-service container
       command: docker rm -f cloudms-product-service
       ignore_errors: yes
@@ -72,5 +76,10 @@
         -e AWS_SQS_ORDER_CREATED_QUEUE_URL={{ sqs_queue_url }}
         {{ dockerhub_username }}/cloudms-order-service:latest
 
-    - name: Show running containers
-      command: docker ps
+    - name: Show all containers
+      command: docker ps -a
+      register: docker_ps_output
+
+    - name: Print all containers
+      debug:
+        var: docker_ps_output.stdout_lines
